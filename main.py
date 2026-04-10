@@ -16,7 +16,6 @@ from Utilities.cf_parser import load_fixed_cashflows, load_float_cashflows
 
 irs_h1 = {
     "Notional":           21_363_643.08,
-    "ValueDate":          date(2025, 12, 31),
     "OverrideValueDate":  None,
     "EffectiveDate":      date(2026, 1, 4),
     "MaturityDate":       date(2036, 1, 4),
@@ -29,7 +28,6 @@ irs_h1 = {
 
 irs_h2 = {
     "Notional":           21_363_643.08,
-    "ValueDate":          date(2025, 12, 31),
     "OverrideValueDate":  None,
     "EffectiveDate":      date(2026, 1, 4),
     "MaturityDate":       date(2036, 1, 4),
@@ -47,7 +45,6 @@ irs_h2 = {
 
 sukuk = {
     "Notional":           250_000_000,
-    "ValueDate":          date(2025, 12, 31),
     "OverrideValueDate":  None,
     "EffectiveDate":      date(2024, 5, 27),
     "MaturityDate":       date(2039, 5, 29),
@@ -65,6 +62,8 @@ sukuk = {
 # ------------------------------------------------------------------ #
 
 def main():
+    value_date = date(2025, 12, 31)
+
     # Load curves
     curves = load_curves(
         filepath="curve_universe.csv",
@@ -80,9 +79,9 @@ def main():
     sukuk_cfs    = load_float_cashflows("Instruments/sukuk_cfs.csv")
     fixings_6m   = load_fixings("6m_fixings.csv")
 
-    h1_results    = get_all_irs_results(irs_h1, h1_float_cfs, h1_fixed_cfs, curves, fixings_6m)
-    h2_results    = get_all_irs_results(irs_h2, h2_float_cfs, h2_fixed_cfs, curves, fixings_6m)
-    sukuk_results = get_all_bond_results(sukuk, sukuk_cfs, curves, fixings_6m)
+    h1_results    = get_all_irs_results(irs_h1, h1_float_cfs, h1_fixed_cfs, curves, value_date, fixings_6m)
+    h2_results    = get_all_irs_results(irs_h2, h2_float_cfs, h2_fixed_cfs, curves, value_date, fixings_6m)
+    sukuk_results = get_all_bond_results(sukuk, sukuk_cfs, curves, value_date, fixings_6m)
 
     print(h1_results)
     print(h2_results)

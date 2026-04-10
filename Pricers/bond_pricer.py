@@ -13,7 +13,7 @@ from Utilities.cf_parser import FloatCashflow
 from Utilities.utils import year_fraction
 
 
-def _build_curve_keys(trade: Dict) -> tuple:
+def _build_curve_keys(trade: Dict, value_date: date) -> tuple:
     """
     Derive the four curve keys needed for base + bumped pricing.
 
@@ -25,12 +25,14 @@ def _build_curve_keys(trade: Dict) -> tuple:
     the short name stored in trade["DiscCurveName"] / trade["FwdCurveName"]
     (e.g. "Disc_3M", "Fwd_6M").
 
+    OverrideValueDate takes precedence over value_date if set.
+
     Returns
     -------
     (disc_orig_key, disc_bumped_key, fwd_orig_key, fwd_bumped_key)
     """
-    value_date = trade.get("OverrideValueDate") or trade["ValueDate"]
-    date_pfx   = value_date.strftime("%Y-%m-%d")
+    effective_date = trade.get("OverrideValueDate") or value_date
+    date_pfx       = effective_date.strftime("%Y-%m-%d")
 
     disc_orig_key   = f"{date_pfx}_{trade['DiscCurveName']}_Orig"
     disc_bumped_key = f"{date_pfx}_{trade['DiscCurveName']}_Bumped"
@@ -134,6 +136,7 @@ def price_bond(
     cfs: List[FloatCashflow],
     disc_curve: IRCurve,
     fwd_curve: IRCurve,
+    value_date: date,
     fixings: Optional[Dict[date, float]] = None,
 ) -> Dict[str, float]:
     """
@@ -148,8 +151,8 @@ def price_bond(
     3. npv          = dirty_price * Notional
                       (scaled to the full position)
 
-    The value_date is taken from trade["OverrideValueDate"] if set,
-    otherwise trade["ValueDate"].
+    value_date is the valuation date passed explicitly by the caller.
+    If trade["OverrideValueDate"] is set it takes precedence.
 
     Fixings
     -------
@@ -169,6 +172,7 @@ def price_bond(
     cfs        : list[FloatCashflow]         - coupon schedule
     disc_curve : IRCurve                     - discounting curve
     fwd_curve  : IRCurve                     - forward / projection curve
+    value_date : date                        - valuation date
     fixings    : dict[date, float] | None    - historical fixings (6M SAIBOR, in %)
 
     Returns
@@ -179,12 +183,12 @@ def price_bond(
         "dirty_price"  : float  - bond_pv / FaceValue
         "npv"          : float  - dirty_price * Notional  (+/- by PayReceive)
     """
-    value_date = trade.get("OverrideValueDate") or trade["ValueDate"]
-    pay_rec    = trade["PayReceive"].strip().upper()
-    fixings    = fixings or {}
+    effective_date = trade.get("OverrideValueDate") or value_date
+    pay_rec        = trade["PayReceive"].strip().upper()
+    fixings        = fixings or {}
 
-    pv_coupons   = _price_coupon_leg(trade, cfs, disc_curve, fwd_curve, fixings, value_date)
-    pv_principal = _price_principal(trade, disc_curve, value_date)
+    pv_coupons   = _price_coupon_leg(trade, cfs, disc_curve, fwd_curve, fixings, effective_date)
+    pv_principal = _price_principal(trade, disc_curve, effective_date)
     bond_pv      = pv_coupons + pv_principal
     dirty_price  = bond_pv / trade["FaceValue"]
 
@@ -207,6 +211,7 @@ def get_all_bond_results(
     trade: Dict,
     cfs: List[FloatCashflow],
     curves: Dict[str, IRCurve],
+    value_date: date,
     fixings: Optional[Dict[date, float]] = None,
 ) -> Dict[str, float]:
     """
@@ -233,6 +238,7 @@ def get_all_bond_results(
     trade      : dict                        - trade details (sukuk style)
     cfs        : list[FloatCashflow]         - coupon schedule
     curves     : dict[str, IRCurve]          - full curves dict from load_curves()
+    value_date : date                        - valuation date
     fixings    : dict[date, float] | None    - historical fixings (6M SAIBOR, in %)
 
     Returns
@@ -246,7 +252,7 @@ def get_all_bond_results(
         "fwd_curve_delta"  : float  - NPV change from bumped fwd curve
         "total_delta"      : float  - disc_curve_delta + fwd_curve_delta
     """
-    disc_orig_key, disc_bumped_key, fwd_orig_key, fwd_bumped_key = _build_curve_keys(trade)
+    disc_orig_key, disc_bumped_key, fwd_orig_key, fwd_bumped_key = _build_curve_keys(trade, value_date)
 
     disc_orig   = curves[disc_orig_key]
     fwd_orig    = curves[fwd_orig_key]
@@ -254,14 +260,14 @@ def get_all_bond_results(
     fwd_bumped  = curves[fwd_bumped_key]
 
     # --- Base NPV ---
-    base = price_bond(trade, cfs, disc_orig, fwd_orig, fixings)
+    base = price_bond(trade, cfs, disc_orig, fwd_orig, value_date, fixings)
 
     # --- Disc curve delta: bump disc, keep fwd flat ---
-    npv_disc_bumped  = price_bond(trade, cfs, disc_bumped, fwd_orig, fixings)["npv"]
+    npv_disc_bumped  = price_bond(trade, cfs, disc_bumped, fwd_orig, value_date, fixings)["npv"]
     disc_curve_delta = npv_disc_bumped - base["npv"]
 
     # --- Fwd curve delta: bump fwd, keep disc flat ---
-    npv_fwd_bumped  = price_bond(trade, cfs, disc_orig, fwd_bumped, fixings)["npv"]
+    npv_fwd_bumped  = price_bond(trade, cfs, disc_orig, fwd_bumped, value_date, fixings)["npv"]
     fwd_curve_delta = npv_fwd_bumped - base["npv"]
 
     total_delta = disc_curve_delta + fwd_curve_delta
