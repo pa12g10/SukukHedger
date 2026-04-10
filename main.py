@@ -4,7 +4,7 @@
 
 from datetime import date
 
-from Pricers.irs_pricer import price_irs
+from Pricers.irs_pricer import price_irs, get_all_irs_results
 from Utilities.curve_parser import load_curves, load_fixings
 from Utilities.cf_parser import load_fixed_cashflows, load_float_cashflows
 
@@ -78,11 +78,10 @@ def main():
     sukuk_cfs    = load_float_cashflows("Instruments/sukuk_cfs.csv")
     fixings_6m = load_fixings("6m_fixings.csv")
 
-    disc_crv = curves["2025-12-31_Disc_3M_Orig"]
-    fwd_crv = curves["2025-12-31_Fwd_6M_Orig"]
-
-    npv = price_irs(irs_orig, h1_float_cfs, h1_fixed_cfs, disc_crv, fwd_crv,fixings_6m)
-    print(npv)
+    h1_results = get_all_irs_results(irs_orig, h1_float_cfs, h1_fixed_cfs, curves,fixings_6m)
+    h2_results = get_all_irs_results(irs_orig, h2_float_cfs, h2_fixed_cfs, curves,fixings_6m)
+    print(h1_results)
+    print(h2_results)
 
 if __name__ == "__main__":
     main()
