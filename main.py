@@ -62,7 +62,8 @@ sukuk = {
 # ------------------------------------------------------------------ #
 
 def main():
-    value_date = date(2025, 12, 31)
+    value_date_dec = date(2025, 12, 31)
+    value_date_mar = date(2026, 3, 31)
 
     # Load curves
     curves = load_curves(
@@ -79,13 +80,14 @@ def main():
     sukuk_cfs    = load_float_cashflows("Instruments/sukuk_cfs.csv")
     fixings_6m   = load_fixings("6m_fixings.csv")
 
-    h1_results    = get_all_irs_results(irs_h1, h1_float_cfs, h1_fixed_cfs, curves, value_date, fixings_6m)
-    h2_results    = get_all_irs_results(irs_h2, h2_float_cfs, h2_fixed_cfs, curves, value_date, fixings_6m)
-    sukuk_results = get_all_bond_results(sukuk, sukuk_cfs, curves, value_date, fixings_6m)
+    for value_date in [value_date_dec, value_date_mar]:
+        h1_results    = get_all_irs_results(irs_h1, h1_float_cfs, h1_fixed_cfs, curves, value_date, fixings_6m)
+        h2_results    = get_all_irs_results(irs_h2, h2_float_cfs, h2_fixed_cfs, curves, value_date, fixings_6m)
+        sukuk_results = get_all_bond_results(sukuk, sukuk_cfs, curves, value_date, fixings_6m)
 
-    print(h1_results)
-    print(h2_results)
-    print(sukuk_results)
+        print(h1_results)
+        print(h2_results)
+        print(sukuk_results)
 
 if __name__ == "__main__":
     main()
