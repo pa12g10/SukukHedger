@@ -37,7 +37,7 @@ def _make_key(curve_date: date, curve: str, tenor: str, curve_type: str) -> str:
 
 def load_curves(
     filepath: str,
-    day_count_convention: str = "ACT/365",
+    day_count_convention: str = "ACT/360",
     interpolation_method: str = "LOG_LINEAR",
 ) -> Dict[str, IRCurve]:
     """

@@ -44,7 +44,7 @@ class IRCurve:
         valuation_date: date,
         dates: List[date],
         discount_factors: List[float],
-        day_count_convention: str = "ACT/365",
+        day_count_convention: str = "ACT/360",
         interpolation_method: str = "LOG_LINEAR",
     ) -> None:
         if len(dates) != len(discount_factors):

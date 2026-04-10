@@ -66,7 +66,7 @@ def main():
     # Load curves
     curves = load_curves(
         filepath="curve_universe.csv",
-        day_count_convention="ACT/365",
+        day_count_convention="ACT/360",
         interpolation_method="LOG_LINEAR",
     )
 
@@ -81,7 +81,7 @@ def main():
     disc_crv = curves["2025-12-31_Disc_3M_Orig"]
     fwd_crv = curves["2025-12-31_Fwd_6M_Orig"]
 
-    npv = price_irs(irs_orig,h1_float_cfs, h1_fixed_cfs,disc_crv,fwd_crv,fixings_6m)
+    npv = price_irs(irs_orig, h1_float_cfs, h1_fixed_cfs, disc_crv, fwd_crv,fixings_6m)
     print(npv)
 
 if __name__ == "__main__":
