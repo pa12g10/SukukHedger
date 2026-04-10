@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 from Model.ir_curve import IRCurve
 from Utilities.cf_parser import FixedCashflow, FloatCashflow
@@ -28,7 +28,7 @@ def _price_fixed_leg(
     """
     notional   = trade["Notional"]
     fixed_rate = trade["FixedRate"]
-    day_count  = disc_curve.day_count_convention
+    day_count  = trade["DayCount"]
     pv = 0.0
 
     for cf in fixed_cfs:
@@ -61,7 +61,7 @@ def _price_float_leg(
     """
     notional  = trade["Notional"]
     spread    = trade.get("Spread", 0.0)
-    day_count = disc_curve.day_count_convention
+    day_count = trade["DayCount"]
     pv = 0.0
 
     for cf in float_cfs:
@@ -96,18 +96,18 @@ def price_irs(
 
     Parameters
     ----------
-    trade      : dict   – trade details (irs_orig / irs_bumped style)
+    trade      : dict   - trade details (irs_orig / irs_bumped style)
     float_cfs  : list[FloatCashflow]
     fixed_cfs  : list[FixedCashflow]
-    disc_curve : IRCurve  – discounting curve
-    fwd_curve  : IRCurve  – forward / projection curve
+    disc_curve : IRCurve  - discounting curve
+    fwd_curve  : IRCurve  - forward / projection curve
 
     Returns
     -------
     dict with keys:
-        "pv_fixed"  : float  – PV of fixed leg  (always positive sign)
-        "pv_float"  : float  – PV of float leg  (always positive sign)
-        "npv"       : float  – NPV from the trade's perspective
+        "pv_fixed"  : float  - PV of fixed leg  (always positive sign)
+        "pv_float"  : float  - PV of float leg  (always positive sign)
+        "npv"       : float  - NPV from the trade's perspective
     """
     value_date = trade.get("OverrideValueDate") or trade["ValueDate"]
     pay_rec    = trade["PayReceive"].strip().upper()

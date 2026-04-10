@@ -21,6 +21,7 @@ irs_orig = {
     "DiscCurveName":      "2025-12-31_Disc_3M_Orig",
     "PayReceive":         "Rec",
     "FixedRate":          0.0486,
+    "DayCount":           "ACT/360",
 }
 
 irs_bumped = {
@@ -33,6 +34,7 @@ irs_bumped = {
     "DiscCurveName":      "2025-12-31_Disc_3M_Bumped",
     "PayReceive":         "Rec",
     "FixedRate":          0.0486,
+    "DayCount":           "ACT/360",
 }
 
 
@@ -50,6 +52,7 @@ sukuk = {
     "DiscCurveName":      "2025-12-31_Disc_3M",
     "PayReceive":         "Rec",
     "Spread":             0.001,
+    "DayCount":           "ACT/360",
 }
 
 
@@ -70,8 +73,7 @@ def main():
     h1_float_cfs = load_float_cashflows("Instruments/h1_float_cfs.csv")
     h2_fixed_cfs = load_fixed_cashflows("Instruments/h2_fixed_cfs.csv")
     h2_float_cfs = load_float_cashflows("Instruments/h2_float_cfs.csv")
-    sukuk_cfs = load_float_cashflows("Instruments/sukuk_cfs.csv")
-
+    sukuk_cfs    = load_float_cashflows("Instruments/sukuk_cfs.csv")
 
 
 if __name__ == "__main__":
