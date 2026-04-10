@@ -56,6 +56,7 @@ sukuk = {
     "PayReceive":         "Rec",
     "Spread":             0.001,
     "DayCount":           "30/360",
+    "FaceValue":           1000,
 }
 
 
