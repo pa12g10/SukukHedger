@@ -22,9 +22,14 @@ def _price_fixed_leg(
     """
     PV of the fixed leg.
 
-    Each period:  CF = Notional * FixedRate * year_fraction(start, end)
-    PV           = CF * DF(payment_date)
-    Periods with payment_date <= value_date are excluded (already settled).
+    Each period:
+      - Skip entirely if end_date   <= value_date  (period fully elapsed).
+      - Skip entirely if payment_date <= value_date (already settled).
+      - If start_date < value_date, clamp accrual start to value_date so we
+        only accrue the remaining stub of the current period.
+      - tau    = year_fraction(accrual_start, end_date)
+      - CF     = Notional * FixedRate * tau
+      - PV     = CF * DF(payment_date)
     """
     notional   = trade["Notional"]
     fixed_rate = trade["FixedRate"]
@@ -32,9 +37,16 @@ def _price_fixed_leg(
     pv = 0.0
 
     for cf in fixed_cfs:
+        # Fully elapsed or already paid
+        if cf.end_date <= value_date:
+            continue
         if cf.payment_date <= value_date:
             continue
-        tau    = year_fraction(cf.start_date, cf.end_date, day_count)
+
+        # Clamp accrual start to value_date for in-progress periods
+        accrual_start = max(cf.start_date, value_date)
+
+        tau    = year_fraction(accrual_start, cf.end_date, day_count)
         coupon = notional * fixed_rate * tau
         df     = disc_curve.get_disc(cf.payment_date)
         pv    += coupon * df
@@ -53,16 +65,19 @@ def _get_float_rate(
 
     Logic
     -----
-    - If reset_date <= value_date  ->  use historical fixing (rates stored in %,
-      divide by 100 to get decimal).
-    - If the reset_date is not found in fixings (e.g. a holiday gap), fall back
-      to the forward curve.
+    - If reset_date <= value_date  ->  use historical fixing (rate stored in %,
+                                       divide by 100 to get decimal).
+      - If the reset_date is missing from fixings (e.g. holiday gap), fall back
+        to the forward curve using the full period (start_date -> end_date).
     - If reset_date > value_date   ->  use forward curve projection.
+
+    Note: the year-fraction / accrual-start clamping is handled in
+    _price_float_leg, not here.  This function returns only the rate.
     """
     if cf.reset_date <= value_date:
         if cf.reset_date in fixings:
             return fixings[cf.reset_date] / 100.0
-        # Fixing missing for this date — fall back to forward curve
+        # Fixing missing for this date - fall back to forward curve
         return fwd_curve.get_forward(cf.start_date, cf.end_date)
     return fwd_curve.get_forward(cf.start_date, cf.end_date)
 
@@ -78,13 +93,17 @@ def _price_float_leg(
     """
     PV of the floating leg.
 
-    For each period:
-      - rate    = historical fixing (if reset_date <= value_date) else forward rate
-      - CF      = Notional * (rate + Spread) * tau
-      - PV      = CF * DF(payment_date)
+    Each period:
+      - Skip entirely if end_date    <= value_date  (period fully elapsed).
+      - Skip entirely if payment_date <= value_date (already settled).
+      - If start_date < value_date, clamp accrual start to value_date so we
+        only accrue the remaining stub of the current period.
+      - rate   = historical fixing (if reset_date <= value_date) else forward rate
+      - tau    = year_fraction(accrual_start, end_date)
+      - CF     = Notional * (rate + Spread) * tau
+      - PV     = CF * DF(payment_date)
 
-    Spread defaults to 0 if not present in trade dict.
-    Periods with payment_date <= value_date are excluded (already settled).
+    Spread defaults to 0 if not present in the trade dict.
     """
     notional  = trade["Notional"]
     spread    = trade.get("Spread", 0.0)
@@ -92,10 +111,17 @@ def _price_float_leg(
     pv = 0.0
 
     for cf in float_cfs:
+        # Fully elapsed or already paid
+        if cf.end_date <= value_date:
+            continue
         if cf.payment_date <= value_date:
             continue
+
+        # Clamp accrual start to value_date for in-progress periods
+        accrual_start = max(cf.start_date, value_date)
+
         rate   = _get_float_rate(cf, fwd_curve, fixings, value_date)
-        tau    = year_fraction(cf.start_date, cf.end_date, day_count)
+        tau    = year_fraction(accrual_start, cf.end_date, day_count)
         coupon = notional * (rate + spread) * tau
         df     = disc_curve.get_disc(cf.payment_date)
         pv    += coupon * df
