@@ -16,7 +16,7 @@ from Hedging.hedge_calculator import hedge_effectiveness, print_hedge_report
 # ------------------------------------------------------------------ #
 
 irs_h1 = {
-    "Notional":           21_363_643.08,
+    "Notional":           159_000_000,
     "OverrideValueDate":  None,
     "EffectiveDate":      date(2026, 1, 4),
     "MaturityDate":       date(2036, 1, 4),
@@ -28,7 +28,7 @@ irs_h1 = {
 }
 
 irs_h2 = {
-    "Notional":           21_363_643.08,
+    "Notional":           159_000_000,
     "OverrideValueDate":  None,
     "EffectiveDate":      date(2026, 1, 4),
     "MaturityDate":       date(2036, 1, 4),

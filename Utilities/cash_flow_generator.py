@@ -385,7 +385,7 @@ if __name__ == "__main__":
     print("=" * 55)
     irs_cashflow_generator(
         start_date       = date(2026, 1, 4),
-        end_date         = date(2036, 1, 4),
+        end_date         = date(2039, 1, 4),
         period_frequency = "12M",
         stub_type        = "NONE",
         is_fixed_leg     = True,
@@ -398,7 +398,7 @@ if __name__ == "__main__":
     print("=" * 55)
     irs_cashflow_generator(
         start_date       = date(2026, 1, 4),
-        end_date         = date(2036, 1, 4),
+        end_date         = date(2039, 1, 4),
         period_frequency = "6M",
         stub_type        = "NONE",
         is_fixed_leg     = False,
