@@ -4,6 +4,7 @@
 
 from datetime import date
 from Utilities.curve_parser import load_curves
+from Utilities.cf_parser import load_fixed_cashflows, load_float_cashflows
 
 
 # ------------------------------------------------------------------ #
@@ -11,15 +12,15 @@ from Utilities.curve_parser import load_curves
 # ------------------------------------------------------------------ #
 
 irs_orig = {
-    "Notional":           100_000_000,          # 100MM
+    "Notional":           100_000_000,
     "ValueDate":          date(2025, 12, 31),
-    "OverrideValueDate":  None,                  # not overridden
+    "OverrideValueDate":  None,
     "EffectiveDate":      date(2026, 1, 4),
     "MaturityDate":       date(2036, 1, 4),
     "FwdCurveName":       "2025-12-31_Fwd_6M_Orig",
     "DiscCurveName":      "2025-12-31_Disc_3M_Orig",
     "PayReceive":         "Rec",
-    "FixedRate":          0.0486,                # 4.86%
+    "FixedRate":          0.0486,
 }
 
 irs_bumped = {
@@ -48,40 +49,29 @@ sukuk = {
     "FwdCurveName":       "2025-12-31_Fwd_6M",
     "DiscCurveName":      "2025-12-31_Disc_3M",
     "PayReceive":         "Rec",
-    "Spread":             0.001,                 # 10bps
+    "Spread":             0.001,
 }
 
 
+# ------------------------------------------------------------------ #
+# Main                                                                #
+# ------------------------------------------------------------------ #
+
 def main():
-    # ------------------------------------------------------------------ #
-    # Load all curves from the universe file                              #
-    # ------------------------------------------------------------------ #
-    curve_file = "curve_universe.csv"
+    # Load curves
     curves = load_curves(
-        filepath=curve_file,
+        filepath="curve_universe.csv",
         day_count_convention="ACT/365",
         interpolation_method="LOG_LINEAR",
     )
 
-    print(f"Loaded {len(curves)} curves:")
-    for key in sorted(curves.keys()):
-        c = curves[key]
-        print(f"  {key}  |  val_date={c.valuation_date}  |  pillars={len(c.dates)}")
+    # Load cashflow schedules
+    fixed_cfs = load_fixed_cashflows("Instruments/h1_fixed_cfs.csv")
+    float_cfs = load_float_cashflows("Instruments/h1_float_cfs.csv")
 
-    # ------------------------------------------------------------------ #
-    # Print trade summaries                                               #
-    # ------------------------------------------------------------------ #
-    print("\nIRS (Orig):")
-    for k, v in irs_orig.items():
-        print(f"  {k}: {v}")
-
-    print("\nIRS (Bumped):")
-    for k, v in irs_bumped.items():
-        print(f"  {k}: {v}")
-
-    print("\nSukuk:")
-    for k, v in sukuk.items():
-        print(f"  {k}: {v}")
+    print(f"Loaded {len(curves)} curves, "
+          f"{len(fixed_cfs)} fixed cashflows, "
+          f"{len(float_cfs)} float cashflows.")
 
 
 if __name__ == "__main__":
