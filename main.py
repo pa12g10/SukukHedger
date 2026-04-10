@@ -3,7 +3,9 @@
 # 10 April 2026
 
 from datetime import date
-from Utilities.curve_parser import load_curves
+
+from Pricers.irs_pricer import price_irs
+from Utilities.curve_parser import load_curves, load_fixings
 from Utilities.cf_parser import load_fixed_cashflows, load_float_cashflows
 
 
@@ -12,7 +14,7 @@ from Utilities.cf_parser import load_fixed_cashflows, load_float_cashflows
 # ------------------------------------------------------------------ #
 
 irs_orig = {
-    "Notional":           100_000_000,
+    "Notional":            21_363_643.08 ,
     "ValueDate":          date(2025, 12, 31),
     "OverrideValueDate":  None,
     "EffectiveDate":      date(2026, 1, 4),
@@ -25,7 +27,7 @@ irs_orig = {
 }
 
 irs_bumped = {
-    "Notional":           100_000_000,
+    "Notional":           21_363_643.08,
     "ValueDate":          date(2025, 12, 31),
     "OverrideValueDate":  None,
     "EffectiveDate":      date(2026, 1, 4),
@@ -43,7 +45,7 @@ irs_bumped = {
 # ------------------------------------------------------------------ #
 
 sukuk = {
-    "Notional":           100_000_000,
+    "Notional":            250_000_000,
     "ValueDate":          date(2025, 12, 31),
     "OverrideValueDate":  None,
     "EffectiveDate":      date(2024, 5, 27),
@@ -74,7 +76,13 @@ def main():
     h2_fixed_cfs = load_fixed_cashflows("Instruments/h2_fixed_cfs.csv")
     h2_float_cfs = load_float_cashflows("Instruments/h2_float_cfs.csv")
     sukuk_cfs    = load_float_cashflows("Instruments/sukuk_cfs.csv")
+    fixings_6m = load_fixings("6m_fixings.csv")
 
+    disc_crv = curves["2025-12-31_Disc_3M_Orig"]
+    fwd_crv = curves["2025-12-31_Fwd_6M_Orig"]
+
+    npv = price_irs(irs_orig,h1_float_cfs, h1_fixed_cfs,disc_crv,fwd_crv,fixings_6m)
+    print(npv)
 
 if __name__ == "__main__":
     main()
