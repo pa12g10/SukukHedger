@@ -13,6 +13,33 @@ from Utilities.cf_parser import FloatCashflow
 from Utilities.utils import year_fraction
 
 
+def _build_curve_keys(trade: Dict) -> tuple:
+    """
+    Derive the four curve keys needed for base + bumped pricing.
+
+    The full curve key is assembled as:
+        {valuation_date}_{CurveName}_Orig   (base)
+        {valuation_date}_{CurveName}_Bumped (shocked)
+
+    where valuation_date is formatted as YYYY-MM-DD and CurveName is
+    the short name stored in trade["DiscCurveName"] / trade["FwdCurveName"]
+    (e.g. "Disc_3M", "Fwd_6M").
+
+    Returns
+    -------
+    (disc_orig_key, disc_bumped_key, fwd_orig_key, fwd_bumped_key)
+    """
+    value_date = trade.get("OverrideValueDate") or trade["ValueDate"]
+    date_pfx   = value_date.strftime("%Y-%m-%d")
+
+    disc_orig_key   = f"{date_pfx}_{trade['DiscCurveName']}_Orig"
+    disc_bumped_key = f"{date_pfx}_{trade['DiscCurveName']}_Bumped"
+    fwd_orig_key    = f"{date_pfx}_{trade['FwdCurveName']}_Orig"
+    fwd_bumped_key  = f"{date_pfx}_{trade['FwdCurveName']}_Bumped"
+
+    return disc_orig_key, disc_bumped_key, fwd_orig_key, fwd_bumped_key
+
+
 def _get_float_rate(
     cf: FloatCashflow,
     fwd_curve: IRCurve,
@@ -185,8 +212,14 @@ def get_all_bond_results(
     """
     Run all bond pricing scenarios and return NPV plus Greek deltas.
 
-    Curve keys are derived from trade["DiscCurveName"] and trade["FwdCurveName"]
-    by replacing the trailing "_Orig" suffix with "_Bumped".
+    Full curve keys are built by concatenating:
+        {valuation_date}_{trade["DiscCurveName"]}_Orig   (e.g. "2025-12-31_Disc_3M_Orig")
+        {valuation_date}_{trade["DiscCurveName"]}_Bumped
+        {valuation_date}_{trade["FwdCurveName"]}_Orig
+        {valuation_date}_{trade["FwdCurveName"]}_Bumped
+
+    where trade["DiscCurveName"] and trade["FwdCurveName"] are short names
+    such as "Disc_3M" and "Fwd_6M".
 
     Scenarios
     ---------
@@ -213,26 +246,22 @@ def get_all_bond_results(
         "fwd_curve_delta"  : float  - NPV change from bumped fwd curve
         "total_delta"      : float  - disc_curve_delta + fwd_curve_delta
     """
-    disc_base_key = trade["DiscCurveName"]
-    fwd_base_key  = trade["FwdCurveName"]
+    disc_orig_key, disc_bumped_key, fwd_orig_key, fwd_bumped_key = _build_curve_keys(trade)
 
-    disc_bumped_key = disc_base_key[:-5] + "_Bumped"   # replace trailing _Orig
-    fwd_bumped_key  = fwd_base_key[:-5]  + "_Bumped"
-
-    disc_base   = curves[disc_base_key]
-    fwd_base    = curves[fwd_base_key]
+    disc_orig   = curves[disc_orig_key]
+    fwd_orig    = curves[fwd_orig_key]
     disc_bumped = curves[disc_bumped_key]
     fwd_bumped  = curves[fwd_bumped_key]
 
     # --- Base NPV ---
-    base = price_bond(trade, cfs, disc_base, fwd_base, fixings)
+    base = price_bond(trade, cfs, disc_orig, fwd_orig, fixings)
 
     # --- Disc curve delta: bump disc, keep fwd flat ---
-    npv_disc_bumped  = price_bond(trade, cfs, disc_bumped, fwd_base, fixings)["npv"]
+    npv_disc_bumped  = price_bond(trade, cfs, disc_bumped, fwd_orig, fixings)["npv"]
     disc_curve_delta = npv_disc_bumped - base["npv"]
 
     # --- Fwd curve delta: bump fwd, keep disc flat ---
-    npv_fwd_bumped  = price_bond(trade, cfs, disc_base, fwd_bumped, fixings)["npv"]
+    npv_fwd_bumped  = price_bond(trade, cfs, disc_orig, fwd_bumped, fixings)["npv"]
     fwd_curve_delta = npv_fwd_bumped - base["npv"]
 
     total_delta = disc_curve_delta + fwd_curve_delta

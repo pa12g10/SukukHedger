@@ -13,6 +13,33 @@ from Utilities.cf_parser import FixedCashflow, FloatCashflow
 from Utilities.utils import year_fraction
 
 
+def _build_curve_keys(trade: Dict) -> tuple:
+    """
+    Derive the four curve keys needed for base + bumped pricing.
+
+    The full curve key is assembled as:
+        {valuation_date}_{CurveName}_Orig   (base)
+        {valuation_date}_{CurveName}_Bumped (shocked)
+
+    where valuation_date is formatted as YYYY-MM-DD and CurveName is
+    the short name stored in trade["DiscCurveName"] / trade["FwdCurveName"]
+    (e.g. "Disc_3M", "Fwd_6M").
+
+    Returns
+    -------
+    (disc_orig_key, disc_bumped_key, fwd_orig_key, fwd_bumped_key)
+    """
+    value_date = trade.get("OverrideValueDate") or trade["ValueDate"]
+    date_pfx   = value_date.strftime("%Y-%m-%d")
+
+    disc_orig_key   = f"{date_pfx}_{trade['DiscCurveName']}_Orig"
+    disc_bumped_key = f"{date_pfx}_{trade['DiscCurveName']}_Bumped"
+    fwd_orig_key    = f"{date_pfx}_{trade['FwdCurveName']}_Orig"
+    fwd_bumped_key  = f"{date_pfx}_{trade['FwdCurveName']}_Bumped"
+
+    return disc_orig_key, disc_bumped_key, fwd_orig_key, fwd_bumped_key
+
+
 def _price_fixed_leg(
     trade: Dict,
     fixed_cfs: List[FixedCashflow],
@@ -192,25 +219,25 @@ def get_all_irs_results(
     """
     Run all IRS pricing scenarios and return NPV plus Greek deltas.
 
-    Curve keys are derived from trade["DiscCurveName"] and
-    trade["FwdCurveName"] by replacing the trailing "_Orig" suffix with
-    "_Bumped".  Both the base (Orig) and shocked (Bumped) curves must
-    be present in *curves*.
+    Full curve keys are built by concatenating:
+        {valuation_date}_{trade["DiscCurveName"]}_Orig   (e.g. "2025-12-31_Disc_3M_Orig")
+        {valuation_date}_{trade["DiscCurveName"]}_Bumped
+        {valuation_date}_{trade["FwdCurveName"]}_Orig
+        {valuation_date}_{trade["FwdCurveName"]}_Bumped
+
+    where trade["DiscCurveName"] and trade["FwdCurveName"] are short names
+    such as "Disc_3M" and "Fwd_6M".
 
     Scenarios
     ---------
-    base NPV          : disc_orig  + fwd_orig   (the clean mark-to-market)
-    disc_curve_delta  : disc_bumped + fwd_orig  minus base NPV
-                        -> sensitivity to a parallel shift of the disc curve
-    fwd_curve_delta   : disc_orig  + fwd_bumped minus base NPV
-                        -> sensitivity to a parallel shift of the fwd curve
+    base NPV          : disc_orig   + fwd_orig   (clean mark-to-market)
+    disc_curve_delta  : disc_bumped + fwd_orig   minus base NPV
+    fwd_curve_delta   : disc_orig   + fwd_bumped minus base NPV
     total_delta       : disc_curve_delta + fwd_curve_delta
 
     Parameters
     ----------
-    trade      : dict                        - trade details (must contain
-                                               DiscCurveName and FwdCurveName
-                                               ending in '_Orig')
+    trade      : dict                        - trade details
     float_cfs  : list[FloatCashflow]
     fixed_cfs  : list[FixedCashflow]
     curves     : dict[str, IRCurve]          - full curves dict from load_curves()
@@ -226,29 +253,14 @@ def get_all_irs_results(
         "fwd_curve_delta"  : float  - NPV change from bumped fwd curve
         "total_delta"      : float  - disc_curve_delta + fwd_curve_delta
     """
-    disc_orig_key   = trade["DiscCurveName"]
-    fwd_orig_key    = trade["FwdCurveName"]
-
-    if not disc_orig_key.endswith("_Orig"):
-        raise ValueError(
-            f"DiscCurveName '{disc_orig_key}' must end with '_Orig' to "
-            f"derive the bumped curve key."
-        )
-    if not fwd_orig_key.endswith("_Orig"):
-        raise ValueError(
-            f"FwdCurveName '{fwd_orig_key}' must end with '_Orig' to "
-            f"derive the bumped curve key."
-        )
-
-    disc_bumped_key = disc_orig_key[:-5] + "_Bumped"   # replace trailing _Orig
-    fwd_bumped_key  = fwd_orig_key[:-5]  + "_Bumped"
+    disc_orig_key, disc_bumped_key, fwd_orig_key, fwd_bumped_key = _build_curve_keys(trade)
 
     disc_orig   = curves[disc_orig_key]
     fwd_orig    = curves[fwd_orig_key]
     disc_bumped = curves[disc_bumped_key]
     fwd_bumped  = curves[fwd_bumped_key]
 
-    # --- Base NPV (orig disc + orig fwd) ---
+    # --- Base NPV ---
     base = price_irs(trade, float_cfs, fixed_cfs, disc_orig, fwd_orig, fixings)
 
     # --- Disc curve delta: bump disc, keep fwd flat ---
