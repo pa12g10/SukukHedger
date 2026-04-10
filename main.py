@@ -9,6 +9,7 @@ from Pricers.irs_pricer import price_irs, get_all_irs_results
 from Utilities.curve_parser import load_curves, load_fixings
 from Utilities.cf_parser import load_fixed_cashflows, load_float_cashflows
 
+from Hedging.hedge_calculator import hedge_effectiveness, print_hedge_report
 
 # ------------------------------------------------------------------ #
 # IRS Trade Definitions                                               #
@@ -80,14 +81,22 @@ def main():
     sukuk_cfs    = load_float_cashflows("Instruments/sukuk_cfs.csv")
     fixings_6m   = load_fixings("6m_fixings.csv")
 
-    for value_date in [value_date_dec, value_date_mar]:
-        h1_results    = get_all_irs_results(irs_h1, h1_float_cfs, h1_fixed_cfs, curves, value_date, fixings_6m)
-        h2_results    = get_all_irs_results(irs_h2, h2_float_cfs, h2_fixed_cfs, curves, value_date, fixings_6m)
-        sukuk_results = get_all_bond_results(sukuk, sukuk_cfs, curves, value_date, fixings_6m)
+    h1_results_dec    = get_all_irs_results(irs_h1, h1_float_cfs, h1_fixed_cfs, curves, value_date_dec, fixings_6m)
+    h2_results_dec    = get_all_irs_results(irs_h2, h2_float_cfs, h2_fixed_cfs, curves, value_date_dec, fixings_6m)
+    sukuk_results_dec = get_all_bond_results(sukuk, sukuk_cfs, curves, value_date_dec, fixings_6m)
 
-        print(h1_results)
-        print(h2_results)
-        print(sukuk_results)
+    h1_results_mar   = get_all_irs_results(irs_h1, h1_float_cfs, h1_fixed_cfs, curves, value_date_mar, fixings_6m)
+    h2_results_mar    = get_all_irs_results(irs_h2, h2_float_cfs, h2_fixed_cfs, curves, value_date_mar, fixings_6m)
+    sukuk_results_mar = get_all_bond_results(sukuk, sukuk_cfs, curves, value_date_mar, fixings_6m)
+
+    results = hedge_effectiveness(
+        h1_start=h1_results_dec, h2_start=h2_results_dec, sukuk_start=sukuk_results_dec,
+        h1_end=h1_results_mar, h2_end=h2_results_mar, sukuk_end=sukuk_results_mar,
+        start_date=value_date_dec,
+        end_date=value_date_mar,
+    )
+
+    print_hedge_report(results)
 
 if __name__ == "__main__":
     main()
