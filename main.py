@@ -79,8 +79,8 @@ def main():
     sukuk_cfs    = load_float_cashflows("Instruments/sukuk_cfs.csv")
     fixings_6m = load_fixings("6m_fixings.csv")
 
-    h1_results = get_all_irs_results(irs_orig, h1_float_cfs, h1_fixed_cfs, curves,fixings_6m)
-    h2_results = get_all_irs_results(irs_orig, h2_float_cfs, h2_fixed_cfs, curves,fixings_6m)
+    h1_results = get_all_irs_results(irs_h1, h1_float_cfs, h1_fixed_cfs, curves,fixings_6m)
+    h2_results = get_all_irs_results(irs_h2, h2_float_cfs, h2_fixed_cfs, curves,fixings_6m)
     sukuk_results = get_all_bond_results(sukuk, sukuk_cfs, curves, fixings_6m)
 
     print(h1_results)
