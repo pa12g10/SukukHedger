@@ -54,7 +54,7 @@ sukuk = {
     "DiscCurveName":      "2025-12-31_Disc_3M",
     "PayReceive":         "Rec",
     "Spread":             0.001,
-    "DayCount":           "ACT/360",
+    "DayCount":           "30/360",
 }
 
 
