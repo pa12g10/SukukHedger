@@ -14,7 +14,7 @@ from Utilities.cf_parser import load_fixed_cashflows, load_float_cashflows
 # IRS Trade Definitions                                               #
 # ------------------------------------------------------------------ #
 
-irs_orig = {
+irs_h1 = {
     "Notional":            21_363_643.08 ,
     "ValueDate":          date(2025, 12, 31),
     "OverrideValueDate":  None,
@@ -27,19 +27,18 @@ irs_orig = {
     "DayCount":           "ACT/360",
 }
 
-irs_bumped = {
-    "Notional":           21_363_643.08,
+irs_h2 = {
+    "Notional":            21_363_643.08 ,
     "ValueDate":          date(2025, 12, 31),
     "OverrideValueDate":  None,
     "EffectiveDate":      date(2026, 1, 4),
     "MaturityDate":       date(2036, 1, 4),
-    "FwdCurveName":       "2025-12-31_Fwd_6M_Bumped",
-    "DiscCurveName":      "2025-12-31_Disc_3M_Bumped",
+    "FwdCurveName":       "2025-12-31_Fwd_6M_Orig",
+    "DiscCurveName":      "2025-12-31_Disc_3M_Orig",
     "PayReceive":         "Rec",
     "FixedRate":          0.0486,
     "DayCount":           "ACT/360",
 }
-
 
 # ------------------------------------------------------------------ #
 # Sukuk Trade Definition                                              #
