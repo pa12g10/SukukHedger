@@ -50,7 +50,7 @@ sukuk = {
     "ValueDate":          date(2025, 12, 31),
     "OverrideValueDate":  None,
     "EffectiveDate":      date(2024, 5, 27),
-    "MaturityDate":       date(2039, 5, 27),
+    "MaturityDate":       date(2039, 5, 29),
     "FwdCurveName":       "2025-12-31_Fwd_6M_Orig",
     "DiscCurveName":      "2025-12-31_Disc_3M_Orig",
     "PayReceive":         "Rec",
