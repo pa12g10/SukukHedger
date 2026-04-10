@@ -35,6 +35,23 @@ irs_bumped = {
 }
 
 
+# ------------------------------------------------------------------ #
+# Sukuk Trade Definition                                              #
+# ------------------------------------------------------------------ #
+
+sukuk = {
+    "Notional":           100_000_000,
+    "ValueDate":          date(2025, 12, 31),
+    "OverrideValueDate":  None,
+    "EffectiveDate":      date(2024, 5, 27),
+    "MaturityDate":       date(2039, 5, 27),
+    "FwdCurveName":       "2025-12-31_Fwd_6M",
+    "DiscCurveName":      "2025-12-31_Disc_3M",
+    "PayReceive":         "Rec",
+    "Spread":             0.001,                 # 10bps
+}
+
+
 def main():
     # ------------------------------------------------------------------ #
     # Load all curves from the universe file                              #
@@ -60,6 +77,10 @@ def main():
 
     print("\nIRS (Bumped):")
     for k, v in irs_bumped.items():
+        print(f"  {k}: {v}")
+
+    print("\nSukuk:")
+    for k, v in sukuk.items():
         print(f"  {k}: {v}")
 
 
