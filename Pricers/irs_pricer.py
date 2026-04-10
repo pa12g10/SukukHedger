@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from Model.ir_curve import IRCurve
 from Utilities.cf_parser import FixedCashflow, FloatCashflow
@@ -34,12 +34,37 @@ def _price_fixed_leg(
     for cf in fixed_cfs:
         if cf.payment_date <= value_date:
             continue
-        tau = year_fraction(cf.start_date, cf.end_date, day_count)
+        tau    = year_fraction(cf.start_date, cf.end_date, day_count)
         coupon = notional * fixed_rate * tau
-        df = disc_curve.get_disc(cf.payment_date)
-        pv += coupon * df
+        df     = disc_curve.get_disc(cf.payment_date)
+        pv    += coupon * df
 
     return pv
+
+
+def _get_float_rate(
+    cf: FloatCashflow,
+    fwd_curve: IRCurve,
+    fixings: Dict[date, float],
+    value_date: date,
+) -> float:
+    """
+    Return the applicable floating rate for a single cashflow period.
+
+    Logic
+    -----
+    - If reset_date <= value_date  ->  use historical fixing (rates stored in %,
+      divide by 100 to get decimal).
+    - If the reset_date is not found in fixings (e.g. a holiday gap), fall back
+      to the forward curve.
+    - If reset_date > value_date   ->  use forward curve projection.
+    """
+    if cf.reset_date <= value_date:
+        if cf.reset_date in fixings:
+            return fixings[cf.reset_date] / 100.0
+        # Fixing missing for this date — fall back to forward curve
+        return fwd_curve.get_forward(cf.start_date, cf.end_date)
+    return fwd_curve.get_forward(cf.start_date, cf.end_date)
 
 
 def _price_float_leg(
@@ -47,17 +72,19 @@ def _price_float_leg(
     float_cfs: List[FloatCashflow],
     disc_curve: IRCurve,
     fwd_curve: IRCurve,
+    fixings: Dict[date, float],
     value_date: date,
 ) -> float:
     """
     PV of the floating leg.
 
-    Each period:  fwd_rate = get_forward(start_date, end_date)  [from fwd_curve]
-                  CF       = Notional * (fwd_rate + Spread) * tau
-                  PV       = CF * DF(payment_date)             [from disc_curve]
+    For each period:
+      - rate    = historical fixing (if reset_date <= value_date) else forward rate
+      - CF      = Notional * (rate + Spread) * tau
+      - PV      = CF * DF(payment_date)
 
     Spread defaults to 0 if not present in trade dict.
-    Periods with payment_date <= value_date are excluded.
+    Periods with payment_date <= value_date are excluded (already settled).
     """
     notional  = trade["Notional"]
     spread    = trade.get("Spread", 0.0)
@@ -67,11 +94,11 @@ def _price_float_leg(
     for cf in float_cfs:
         if cf.payment_date <= value_date:
             continue
-        fwd_rate = fwd_curve.get_forward(cf.start_date, cf.end_date)
-        tau      = year_fraction(cf.start_date, cf.end_date, day_count)
-        coupon   = notional * (fwd_rate + spread) * tau
-        df       = disc_curve.get_disc(cf.payment_date)
-        pv += coupon * df
+        rate   = _get_float_rate(cf, fwd_curve, fixings, value_date)
+        tau    = year_fraction(cf.start_date, cf.end_date, day_count)
+        coupon = notional * (rate + spread) * tau
+        df     = disc_curve.get_disc(cf.payment_date)
+        pv    += coupon * df
 
     return pv
 
@@ -82,12 +109,20 @@ def price_irs(
     fixed_cfs: List[FixedCashflow],
     disc_curve: IRCurve,
     fwd_curve: IRCurve,
+    fixings: Optional[Dict[date, float]] = None,
 ) -> Dict[str, float]:
     """
     Price an Interest Rate Swap and return its NPV.
 
     The value_date used for discounting is taken from trade["OverrideValueDate"]
     if set, otherwise trade["ValueDate"].
+
+    Fixings
+    -------
+    Pass the relevant fixings dict (e.g. fixings_6m from load_fixings()).
+    For any float period whose reset_date <= value_date, the historical
+    fixing is used instead of the forward curve.  If fixings is None or
+    a reset_date is missing, the forward curve is used as fallback.
 
     Pay/Receive convention
     ----------------------
@@ -96,11 +131,12 @@ def price_irs(
 
     Parameters
     ----------
-    trade      : dict   - trade details (irs_orig / irs_bumped style)
+    trade      : dict                      - trade details (irs_orig / irs_bumped style)
     float_cfs  : list[FloatCashflow]
     fixed_cfs  : list[FixedCashflow]
-    disc_curve : IRCurve  - discounting curve
-    fwd_curve  : IRCurve  - forward / projection curve
+    disc_curve : IRCurve                   - discounting curve
+    fwd_curve  : IRCurve                   - forward / projection curve
+    fixings    : dict[date, float] | None  - historical fixings (6M SAIBOR, in %)
 
     Returns
     -------
@@ -111,9 +147,10 @@ def price_irs(
     """
     value_date = trade.get("OverrideValueDate") or trade["ValueDate"]
     pay_rec    = trade["PayReceive"].strip().upper()
+    fixings    = fixings or {}
 
     pv_fixed = _price_fixed_leg(trade, fixed_cfs, disc_curve, value_date)
-    pv_float = _price_float_leg(trade, float_cfs, disc_curve, fwd_curve, value_date)
+    pv_float = _price_float_leg(trade, float_cfs, disc_curve, fwd_curve, fixings, value_date)
 
     if pay_rec == "REC":
         npv = pv_fixed - pv_float
