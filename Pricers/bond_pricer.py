@@ -49,7 +49,7 @@ def _price_coupon_leg(
     value_date: date,
 ) -> float:
     """
-    PV of all future floating coupons.
+    PV of all future floating coupons, computed on a single FaceValue bond.
 
     Each period:
       - Skip entirely if end_date    <= value_date  (period fully elapsed).
@@ -58,14 +58,14 @@ def _price_coupon_leg(
         only accrue the remaining stub of the current period.
       - rate   = historical fixing (if reset_date <= value_date) else forward rate
       - tau    = year_fraction(accrual_start, end_date)
-      - CF     = Notional * (rate + Spread) * tau
+      - CF     = FaceValue * (rate + Spread) * tau
       - PV     = CF * DF(payment_date)
 
     Spread is mandatory on the bond and taken from trade["Spread"].
     """
-    notional  = trade["Notional"]
-    spread    = trade["Spread"]
-    day_count = trade["DayCount"]
+    face_value = trade["FaceValue"]
+    spread     = trade["Spread"]
+    day_count  = trade["DayCount"]
     pv = 0.0
 
     for cf in cfs:
@@ -77,7 +77,7 @@ def _price_coupon_leg(
         accrual_start = max(cf.start_date, value_date)
         rate   = _get_float_rate(cf, fwd_curve, fixings, value_date)
         tau    = year_fraction(accrual_start, cf.end_date, day_count)
-        coupon = notional * (rate + spread) * tau
+        coupon = face_value * (rate + spread) * tau
         df     = disc_curve.get_disc(cf.payment_date)
         pv    += coupon * df
 
@@ -90,16 +90,16 @@ def _price_principal(
     value_date: date,
 ) -> float:
     """
-    PV of the notional principal repayment at maturity.
+    PV of the face value repayment at maturity.
 
     Returns 0 if maturity_date <= value_date (already repaid).
     """
     maturity_date = trade["MaturityDate"]
     if maturity_date <= value_date:
         return 0.0
-    notional = trade["Notional"]
-    df       = disc_curve.get_disc(maturity_date)
-    return notional * df
+    face_value = trade["FaceValue"]
+    df         = disc_curve.get_disc(maturity_date)
+    return face_value * df
 
 
 def price_bond(
@@ -112,11 +112,14 @@ def price_bond(
     """
     Price a floating-rate bond (Sukuk) and return its dirty price and NPV.
 
-    The bond is modelled as:
-        PV  = PV(coupons) + PV(principal repayment at maturity)
-
-    Each coupon:  CF = Notional * (forward_rate + Spread) * tau
-    Principal:    CF = Notional  (paid at MaturityDate)
+    Pricing steps
+    -------------
+    1. bond_pv      = pv_coupons + pv_principal
+                      (both computed on a single FaceValue bond)
+    2. dirty_price  = bond_pv / FaceValue
+                      (price per unit of face, e.g. 0.9823 = 98.23 per 100 face)
+    3. npv          = dirty_price * Notional
+                      (scaled to the full position)
 
     The value_date is taken from trade["OverrideValueDate"] if set,
     otherwise trade["ValueDate"].
@@ -130,8 +133,8 @@ def price_bond(
 
     Pay/Receive convention
     ----------------------
-    "Rec"  : we receive the bond cashflows  ->  NPV = +PV
-    "Pay"  : we pay the bond cashflows      ->  NPV = -PV
+    "Rec"  : we receive the bond cashflows  ->  NPV = +dirty_price * Notional
+    "Pay"  : we pay the bond cashflows      ->  NPV = -dirty_price * Notional
 
     Parameters
     ----------
@@ -144,10 +147,10 @@ def price_bond(
     Returns
     -------
     dict with keys:
-        "pv_coupons"   : float  - PV of all future coupons
-        "pv_principal" : float  - PV of notional repayment at maturity
-        "dirty_price"  : float  - (pv_coupons + pv_principal) / Notional * 100
-        "npv"          : float  - NPV from the trade's perspective
+        "pv_coupons"   : float  - PV of future coupons  (per FaceValue bond)
+        "pv_principal" : float  - PV of principal repayment  (per FaceValue bond)
+        "dirty_price"  : float  - bond_pv / FaceValue
+        "npv"          : float  - dirty_price * Notional  (+/- by PayReceive)
     """
     value_date = trade.get("OverrideValueDate") or trade["ValueDate"]
     pay_rec    = trade["PayReceive"].strip().upper()
@@ -155,13 +158,13 @@ def price_bond(
 
     pv_coupons   = _price_coupon_leg(trade, cfs, disc_curve, fwd_curve, fixings, value_date)
     pv_principal = _price_principal(trade, disc_curve, value_date)
-    total_pv     = pv_coupons + pv_principal
-    dirty_price  = (total_pv / trade["Notional"]) * 100.0
+    bond_pv      = pv_coupons + pv_principal
+    dirty_price  = bond_pv / trade["FaceValue"]
 
     if pay_rec == "REC":
-        npv = total_pv
+        npv = dirty_price * trade["Notional"]
     elif pay_rec == "PAY":
-        npv = -total_pv
+        npv = -dirty_price * trade["Notional"]
     else:
         raise ValueError(f"PayReceive must be 'Rec' or 'Pay', got '{trade['PayReceive']}'.")
 
@@ -182,16 +185,14 @@ def get_all_bond_results(
     """
     Run all bond pricing scenarios and return NPV plus Greek deltas.
 
-    Curve keys are derived from trade["DiscCurveName"] and
-    trade["FwdCurveName"].  Unlike the IRS, the Sukuk curve names do NOT
-    carry an "_Orig" suffix -- bumped variants are found by appending
-    "_Bumped" to the base curve name.
+    Curve keys are derived from trade["DiscCurveName"] and trade["FwdCurveName"]
+    by replacing the trailing "_Orig" suffix with "_Bumped".
 
     Scenarios
     ---------
-    base NPV          : disc_base   + fwd_base   (clean mark-to-market)
-    disc_curve_delta  : disc_bumped + fwd_base   minus base NPV
-    fwd_curve_delta   : disc_base   + fwd_bumped minus base NPV
+    base NPV          : disc_orig   + fwd_orig   (clean mark-to-market)
+    disc_curve_delta  : disc_bumped + fwd_orig   minus base NPV
+    fwd_curve_delta   : disc_orig   + fwd_bumped minus base NPV
     total_delta       : disc_curve_delta + fwd_curve_delta
 
     Parameters
@@ -204,10 +205,10 @@ def get_all_bond_results(
     Returns
     -------
     dict with keys:
-        "npv"              : float  - base NPV
-        "pv_coupons"       : float  - PV of coupons (base)
-        "pv_principal"     : float  - PV of principal (base)
-        "dirty_price"      : float  - dirty price as % of notional (base)
+        "npv"              : float  - base NPV  (= dirty_price * Notional)
+        "pv_coupons"       : float  - PV of coupons per FaceValue bond (base)
+        "pv_principal"     : float  - PV of principal per FaceValue bond (base)
+        "dirty_price"      : float  - bond_pv / FaceValue (base)
         "disc_curve_delta" : float  - NPV change from bumped disc curve
         "fwd_curve_delta"  : float  - NPV change from bumped fwd curve
         "total_delta"      : float  - disc_curve_delta + fwd_curve_delta
