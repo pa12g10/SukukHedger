@@ -215,8 +215,8 @@ def get_all_bond_results(
     disc_base_key = trade["DiscCurveName"]
     fwd_base_key  = trade["FwdCurveName"]
 
-    disc_bumped_key = disc_base_key + "_Bumped"
-    fwd_bumped_key  = fwd_base_key  + "_Bumped"
+    disc_bumped_key = disc_base_key[:-5] + "_Bumped"   # replace trailing _Orig
+    fwd_bumped_key  = fwd_base_key[:-5]  + "_Bumped"
 
     disc_base   = curves[disc_base_key]
     fwd_base    = curves[fwd_base_key]

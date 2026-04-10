@@ -4,6 +4,7 @@
 
 from datetime import date
 
+from Pricers.bond_pricer import get_all_bond_results
 from Pricers.irs_pricer import price_irs, get_all_irs_results
 from Utilities.curve_parser import load_curves, load_fixings
 from Utilities.cf_parser import load_fixed_cashflows, load_float_cashflows
@@ -50,8 +51,8 @@ sukuk = {
     "OverrideValueDate":  None,
     "EffectiveDate":      date(2024, 5, 27),
     "MaturityDate":       date(2039, 5, 27),
-    "FwdCurveName":       "2025-12-31_Fwd_6M",
-    "DiscCurveName":      "2025-12-31_Disc_3M",
+    "FwdCurveName":       "2025-12-31_Fwd_6M_Orig",
+    "DiscCurveName":      "2025-12-31_Disc_3M_Orig",
     "PayReceive":         "Rec",
     "Spread":             0.001,
     "DayCount":           "30/360",
@@ -80,8 +81,11 @@ def main():
 
     h1_results = get_all_irs_results(irs_orig, h1_float_cfs, h1_fixed_cfs, curves,fixings_6m)
     h2_results = get_all_irs_results(irs_orig, h2_float_cfs, h2_fixed_cfs, curves,fixings_6m)
+    sukuk_results = get_all_bond_results(sukuk, sukuk_cfs, curves, fixings_6m)
+
     print(h1_results)
     print(h2_results)
+    print(sukuk_results)
 
 if __name__ == "__main__":
     main()
