@@ -66,12 +66,12 @@ def main():
     )
 
     # Load cashflow schedules
-    fixed_cfs = load_fixed_cashflows("Instruments/h1_fixed_cfs.csv")
-    float_cfs = load_float_cashflows("Instruments/h1_float_cfs.csv")
+    h1_fixed_cfs = load_fixed_cashflows("Instruments/h1_fixed_cfs.csv")
+    h1_float_cfs = load_float_cashflows("Instruments/h1_float_cfs.csv")
+    h2_fixed_cfs = load_fixed_cashflows("Instruments/h2_fixed_cfs.csv")
+    h2_float_cfs = load_float_cashflows("Instruments/h2_float_cfs.csv")
+    sukuk_cfs = load_float_cashflows("Instruments/sukuk_cfs.csv")
 
-    print(f"Loaded {len(curves)} curves, "
-          f"{len(fixed_cfs)} fixed cashflows, "
-          f"{len(float_cfs)} float cashflows.")
 
 
 if __name__ == "__main__":
