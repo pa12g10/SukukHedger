@@ -23,7 +23,7 @@ def _price_fixed_leg(
     PV of the fixed leg.
 
     Each period:
-      - Skip entirely if end_date   <= value_date  (period fully elapsed).
+      - Skip entirely if end_date    <= value_date  (period fully elapsed).
       - Skip entirely if payment_date <= value_date (already settled).
       - If start_date < value_date, clamp accrual start to value_date so we
         only accrue the remaining stub of the current period.
@@ -37,15 +37,12 @@ def _price_fixed_leg(
     pv = 0.0
 
     for cf in fixed_cfs:
-        # Fully elapsed or already paid
         if cf.end_date <= value_date:
             continue
         if cf.payment_date <= value_date:
             continue
 
-        # Clamp accrual start to value_date for in-progress periods
         accrual_start = max(cf.start_date, value_date)
-
         tau    = year_fraction(accrual_start, cf.end_date, day_count)
         coupon = notional * fixed_rate * tau
         df     = disc_curve.get_disc(cf.payment_date)
@@ -71,13 +68,12 @@ def _get_float_rate(
         to the forward curve using the full period (start_date -> end_date).
     - If reset_date > value_date   ->  use forward curve projection.
 
-    Note: the year-fraction / accrual-start clamping is handled in
+    Note: year-fraction / accrual-start clamping is handled in
     _price_float_leg, not here.  This function returns only the rate.
     """
     if cf.reset_date <= value_date:
         if cf.reset_date in fixings:
             return fixings[cf.reset_date] / 100.0
-        # Fixing missing for this date - fall back to forward curve
         return fwd_curve.get_forward(cf.start_date, cf.end_date)
     return fwd_curve.get_forward(cf.start_date, cf.end_date)
 
@@ -111,15 +107,12 @@ def _price_float_leg(
     pv = 0.0
 
     for cf in float_cfs:
-        # Fully elapsed or already paid
         if cf.end_date <= value_date:
             continue
         if cf.payment_date <= value_date:
             continue
 
-        # Clamp accrual start to value_date for in-progress periods
         accrual_start = max(cf.start_date, value_date)
-
         rate   = _get_float_rate(cf, fwd_curve, fixings, value_date)
         tau    = year_fraction(accrual_start, cf.end_date, day_count)
         coupon = notional * (rate + spread) * tau
@@ -140,15 +133,15 @@ def price_irs(
     """
     Price an Interest Rate Swap and return its NPV.
 
-    The value_date used for discounting is taken from trade["OverrideValueDate"]
-    if set, otherwise trade["ValueDate"].
+    The value_date is taken from trade["OverrideValueDate"] if set,
+    otherwise trade["ValueDate"].
 
     Fixings
     -------
     Pass the relevant fixings dict (e.g. fixings_6m from load_fixings()).
-    For any float period whose reset_date <= value_date, the historical
-    fixing is used instead of the forward curve.  If fixings is None or
-    a reset_date is missing, the forward curve is used as fallback.
+    For any float period whose reset_date <= value_date the historical
+    fixing is used.  If fixings is None or a date is missing, the forward
+    curve is used as fallback.
 
     Pay/Receive convention
     ----------------------
@@ -157,7 +150,7 @@ def price_irs(
 
     Parameters
     ----------
-    trade      : dict                      - trade details (irs_orig / irs_bumped style)
+    trade      : dict                      - trade details
     float_cfs  : list[FloatCashflow]
     fixed_cfs  : list[FixedCashflow]
     disc_curve : IRCurve                   - discounting curve
@@ -166,10 +159,7 @@ def price_irs(
 
     Returns
     -------
-    dict with keys:
-        "pv_fixed"  : float  - PV of fixed leg  (always positive sign)
-        "pv_float"  : float  - PV of float leg  (always positive sign)
-        "npv"       : float  - NPV from the trade's perspective
+    dict  {"pv_fixed": float, "pv_float": float, "npv": float}
     """
     value_date = trade.get("OverrideValueDate") or trade["ValueDate"]
     pay_rec    = trade["PayReceive"].strip().upper()
@@ -189,4 +179,93 @@ def price_irs(
         "pv_fixed": pv_fixed,
         "pv_float": pv_float,
         "npv":      npv,
+    }
+
+
+def get_all_irs_results(
+    trade: Dict,
+    float_cfs: List[FloatCashflow],
+    fixed_cfs: List[FixedCashflow],
+    curves: Dict[str, IRCurve],
+    fixings: Optional[Dict[date, float]] = None,
+) -> Dict[str, float]:
+    """
+    Run all IRS pricing scenarios and return NPV plus Greek deltas.
+
+    Curve keys are derived from trade["DiscCurveName"] and
+    trade["FwdCurveName"] by replacing the trailing "_Orig" suffix with
+    "_Bumped".  Both the base (Orig) and shocked (Bumped) curves must
+    be present in *curves*.
+
+    Scenarios
+    ---------
+    base NPV          : disc_orig  + fwd_orig   (the clean mark-to-market)
+    disc_curve_delta  : disc_bumped + fwd_orig  minus base NPV
+                        -> sensitivity to a parallel shift of the disc curve
+    fwd_curve_delta   : disc_orig  + fwd_bumped minus base NPV
+                        -> sensitivity to a parallel shift of the fwd curve
+    total_delta       : disc_curve_delta + fwd_curve_delta
+
+    Parameters
+    ----------
+    trade      : dict                        - trade details (must contain
+                                               DiscCurveName and FwdCurveName
+                                               ending in '_Orig')
+    float_cfs  : list[FloatCashflow]
+    fixed_cfs  : list[FixedCashflow]
+    curves     : dict[str, IRCurve]          - full curves dict from load_curves()
+    fixings    : dict[date, float] | None    - historical fixings (6M SAIBOR, in %)
+
+    Returns
+    -------
+    dict with keys:
+        "npv"              : float  - base NPV (orig disc + orig fwd)
+        "pv_fixed"         : float  - PV of fixed leg (base)
+        "pv_float"         : float  - PV of float leg (base)
+        "disc_curve_delta" : float  - NPV change from bumped disc curve
+        "fwd_curve_delta"  : float  - NPV change from bumped fwd curve
+        "total_delta"      : float  - disc_curve_delta + fwd_curve_delta
+    """
+    disc_orig_key   = trade["DiscCurveName"]
+    fwd_orig_key    = trade["FwdCurveName"]
+
+    if not disc_orig_key.endswith("_Orig"):
+        raise ValueError(
+            f"DiscCurveName '{disc_orig_key}' must end with '_Orig' to "
+            f"derive the bumped curve key."
+        )
+    if not fwd_orig_key.endswith("_Orig"):
+        raise ValueError(
+            f"FwdCurveName '{fwd_orig_key}' must end with '_Orig' to "
+            f"derive the bumped curve key."
+        )
+
+    disc_bumped_key = disc_orig_key[:-5] + "_Bumped"   # replace trailing _Orig
+    fwd_bumped_key  = fwd_orig_key[:-5]  + "_Bumped"
+
+    disc_orig   = curves[disc_orig_key]
+    fwd_orig    = curves[fwd_orig_key]
+    disc_bumped = curves[disc_bumped_key]
+    fwd_bumped  = curves[fwd_bumped_key]
+
+    # --- Base NPV (orig disc + orig fwd) ---
+    base = price_irs(trade, float_cfs, fixed_cfs, disc_orig, fwd_orig, fixings)
+
+    # --- Disc curve delta: bump disc, keep fwd flat ---
+    npv_disc_bumped  = price_irs(trade, float_cfs, fixed_cfs, disc_bumped, fwd_orig, fixings)["npv"]
+    disc_curve_delta = npv_disc_bumped - base["npv"]
+
+    # --- Fwd curve delta: bump fwd, keep disc flat ---
+    npv_fwd_bumped  = price_irs(trade, float_cfs, fixed_cfs, disc_orig, fwd_bumped, fixings)["npv"]
+    fwd_curve_delta = npv_fwd_bumped - base["npv"]
+
+    total_delta = disc_curve_delta + fwd_curve_delta
+
+    return {
+        "npv":              base["npv"],
+        "pv_fixed":         base["pv_fixed"],
+        "pv_float":         base["pv_float"],
+        "disc_curve_delta": disc_curve_delta,
+        "fwd_curve_delta":  fwd_curve_delta,
+        "total_delta":      total_delta,
     }
