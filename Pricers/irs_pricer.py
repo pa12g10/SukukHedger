@@ -10,8 +10,105 @@ from typing import Dict, List, Optional
 
 from Model.ir_curve import IRCurve
 from Utilities.cf_parser import FixedCashflow, FloatCashflow
+from Utilities.cash_flow_generator import irs_cashflow_generator
 from Utilities.utils import year_fraction
 import QuantLib as QL
+
+
+# ------------------------------------------------------------------ #
+# Cashflow generation helpers                                          #
+# ------------------------------------------------------------------ #
+#
+# As of the `replace_cfs_ql` branch the IRS pricer no longer takes
+# pre-loaded cashflow lists as inputs.  Both legs are regenerated on
+# the fly from the trade dict using the Saudi-calendar-aware
+# `irs_cashflow_generator` (see Utilities/cash_flow_generator.py).
+#
+# Required trade-dict fields for schedule generation
+# --------------------------------------------------
+#   EffectiveDate   : date   – leg start (same for both legs)
+#   MaturityDate    : date   – leg end   (same for both legs)
+#   FixedFrequency  : str    – fixed leg coupon freq (e.g. '12M', '6M')
+#   FixedStubType   : str    – 'FRONT', 'BACK' or 'NONE'
+#   FloatFrequency  : str    – float leg coupon freq (e.g. '6M', '3M')
+#   FloatStubType   : str    – 'FRONT', 'BACK' or 'NONE'
+#
+# Optional
+# --------
+#   Calendar        : str    – only 'SA' (Saudi Arabia) supported today,
+#                              defaults to 'SA' if omitted
+#   SpotLag         : int    – business-day spot lag for float resets,
+#                              defaults to 2 (SAIBOR convention)
+
+
+def _build_fixed_cfs_from_trade(trade: Dict) -> List[FixedCashflow]:
+    """
+    Generate the fixed-leg cashflow schedule from the trade dict via
+    QuantLib/Saudi-calendar-aware `irs_cashflow_generator`.
+
+    Returns
+    -------
+    list[FixedCashflow]
+    """
+    calendar = trade.get("Calendar", "SA").upper()
+    if calendar != "SA":
+        raise ValueError(
+            f"Only the 'SA' (Saudi Arabia) calendar is currently supported, got '{calendar}'."
+        )
+
+    rows = irs_cashflow_generator(
+        start_date       = trade["EffectiveDate"],
+        end_date         = trade["MaturityDate"],
+        period_frequency = trade["FixedFrequency"],
+        stub_type        = trade["FixedStubType"],
+        is_fixed_leg     = True,
+        output_path      = None,
+    )
+    return [
+        FixedCashflow(
+            start_date   = r["StartDate"],
+            end_date     = r["EndDate"],
+            payment_date = r["PaymentDate"],
+        )
+        for r in rows
+    ]
+
+
+def _build_float_cfs_from_trade(trade: Dict) -> List[FloatCashflow]:
+    """
+    Generate the floating-leg cashflow schedule from the trade dict via
+    QuantLib/Saudi-calendar-aware `irs_cashflow_generator`.
+
+    Returns
+    -------
+    list[FloatCashflow]
+    """
+    calendar = trade.get("Calendar", "SA").upper()
+    if calendar != "SA":
+        raise ValueError(
+            f"Only the 'SA' (Saudi Arabia) calendar is currently supported, got '{calendar}'."
+        )
+
+    spot_lag = int(trade.get("SpotLag", 2))
+
+    rows = irs_cashflow_generator(
+        start_date       = trade["EffectiveDate"],
+        end_date         = trade["MaturityDate"],
+        period_frequency = trade["FloatFrequency"],
+        stub_type        = trade["FloatStubType"],
+        is_fixed_leg     = False,
+        output_path      = None,
+        spot_lag         = spot_lag,
+    )
+    return [
+        FloatCashflow(
+            start_date   = r["StartDate"],
+            end_date     = r["EndDate"],
+            reset_date   = r["ResetDate"],
+            payment_date = r["PaymentDate"],
+        )
+        for r in rows
+    ]
 
 
 def _build_curve_keys(trade: Dict, value_date: date) -> tuple:
@@ -154,8 +251,6 @@ def _price_float_leg(
 
 def price_irs(
     trade: Dict,
-    float_cfs: List[FloatCashflow],
-    fixed_cfs: List[FixedCashflow],
     disc_curve: IRCurve,
     fwd_curve: IRCurve,
     value_date: date,
@@ -163,6 +258,11 @@ def price_irs(
 ) -> Dict[str, float]:
     """
     Price an Interest Rate Swap and return its NPV.
+
+    Both legs' cashflow schedules are generated on the fly from the
+    trade dict via `irs_cashflow_generator` (Saudi-calendar-aware,
+    Modified Following business-day adjustment).  The caller no longer
+    needs to pass pre-loaded `fixed_cfs` / `float_cfs` lists.
 
     value_date is the valuation date passed explicitly by the caller.
     If trade["OverrideValueDate"] is set it takes precedence.
@@ -179,11 +279,23 @@ def price_irs(
     "Rec"  : receive fixed, pay floating  ->  NPV = PV_fixed - PV_float
     "Pay"  : pay fixed, receive floating  ->  NPV = PV_float - PV_fixed
 
+    Required trade-dict fields (in addition to the existing pricing
+    fields Notional / FixedRate / DayCount / PayReceive / EffectiveDate
+    / MaturityDate / DiscCurveName / FwdCurveName):
+        FixedFrequency : str  — e.g. '12M', '6M', '3M', '1M'
+        FixedStubType  : str  — 'FRONT', 'BACK' or 'NONE'
+        FloatFrequency : str  — e.g. '6M', '3M', '1M'
+        FloatStubType  : str  — 'FRONT', 'BACK' or 'NONE'
+
+    Optional trade-dict fields:
+        Calendar : str  — currently only 'SA' (default)
+        SpotLag  : int  — float-leg reset spot lag in business days
+                          (default 2, SAIBOR convention)
+        Spread   : float — float-leg spread over index (default 0)
+
     Parameters
     ----------
     trade      : dict                      - trade details
-    float_cfs  : list[FloatCashflow]
-    fixed_cfs  : list[FixedCashflow]
     disc_curve : IRCurve                   - discounting curve
     fwd_curve  : IRCurve                   - forward / projection curve
     value_date : date                      - valuation date
@@ -196,6 +308,11 @@ def price_irs(
     effective_date = trade.get("OverrideValueDate") or value_date
     pay_rec        = trade["PayReceive"].strip().upper()
     fixings        = fixings or {}
+
+    # Generate cashflow schedules from the trade dict (QuantLib-style,
+    # Saudi-calendar-aware).
+    fixed_cfs = _build_fixed_cfs_from_trade(trade)
+    float_cfs = _build_float_cfs_from_trade(trade)
 
     pv_fixed = _price_fixed_leg(trade, fixed_cfs, disc_curve, effective_date)
     pv_float = _price_float_leg(trade, float_cfs, disc_curve, fwd_curve, fixings, effective_date)
@@ -216,14 +333,16 @@ def price_irs(
 
 def get_all_irs_results(
     trade: Dict,
-    float_cfs: List[FloatCashflow],
-    fixed_cfs: List[FixedCashflow],
     curves: Dict[str, IRCurve],
     value_date: date,
     fixings: Optional[Dict[date, float]] = None,
 ) -> Dict[str, float]:
     """
     Run all IRS pricing scenarios and return NPV plus Greek deltas.
+
+    Both legs' cashflow schedules are generated on the fly inside
+    `price_irs` from the trade dict, so the caller no longer needs to
+    pre-load and pass `fixed_cfs` / `float_cfs`.
 
     Full curve keys are built by concatenating:
         {valuation_date}_{trade["DiscCurveName"]}_Orig   (e.g. "2025-12-31_Disc_3M_Orig")
@@ -241,11 +360,15 @@ def get_all_irs_results(
     fwd_curve_delta   : disc_orig   + fwd_bumped minus base NPV
     total_delta       : disc_curve_delta + fwd_curve_delta
 
+    Trade-dict fields required for schedule generation
+    --------------------------------------------------
+    See `price_irs` for the full list — in particular:
+        FixedFrequency, FixedStubType, FloatFrequency, FloatStubType.
+    Optional: Calendar (default 'SA'), SpotLag (default 2).
+
     Parameters
     ----------
     trade      : dict                        - trade details
-    float_cfs  : list[FloatCashflow]
-    fixed_cfs  : list[FixedCashflow]
     curves     : dict[str, IRCurve]          - full curves dict from load_curves()
     value_date : date                        - valuation date
     fixings    : dict[date, float] | None    - historical fixings (6M SAIBOR, in %)
@@ -268,14 +391,14 @@ def get_all_irs_results(
     fwd_bumped  = curves[fwd_bumped_key]
 
     # --- Base NPV ---
-    base = price_irs(trade, float_cfs, fixed_cfs, disc_orig, fwd_orig, value_date, fixings)
+    base = price_irs(trade, disc_orig, fwd_orig, value_date, fixings)
 
     # --- Disc curve delta: bump disc, keep fwd flat ---
-    npv_disc_bumped  = price_irs(trade, float_cfs, fixed_cfs, disc_bumped, fwd_orig, value_date, fixings)["npv"]
+    npv_disc_bumped  = price_irs(trade, disc_bumped, fwd_orig, value_date, fixings)["npv"]
     disc_curve_delta = npv_disc_bumped - base["npv"]
 
     # --- Fwd curve delta: bump fwd, keep disc flat ---
-    npv_fwd_bumped  = price_irs(trade, float_cfs, fixed_cfs, disc_orig, fwd_bumped, value_date, fixings)["npv"]
+    npv_fwd_bumped  = price_irs(trade, disc_orig, fwd_bumped, value_date, fixings)["npv"]
     fwd_curve_delta = npv_fwd_bumped - base["npv"]
 
     total_delta = disc_curve_delta + fwd_curve_delta

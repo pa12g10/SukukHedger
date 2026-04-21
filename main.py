@@ -7,7 +7,7 @@ from datetime import date
 from Pricers.bond_pricer import get_all_bond_results
 from Pricers.irs_pricer import price_irs, get_all_irs_results
 from Utilities.curve_parser import load_curves, load_fixings
-from Utilities.cf_parser import load_fixed_cashflows, load_float_cashflows
+from Utilities.cf_parser import load_float_cashflows
 
 from Hedging.hedge_calculator import hedge_effectiveness, print_hedge_report
 
@@ -25,6 +25,13 @@ irs_h1 = {
     "PayReceive":         "Rec",
     "FixedRate":          0.0486,
     "DayCount":           "ACT/360",
+    # Cashflow-schedule generation (QuantLib / Saudi calendar)
+    "Calendar":           "SA",
+    "FixedFrequency":     "12M",
+    "FixedStubType":      "NONE",
+    "FloatFrequency":     "6M",
+    "FloatStubType":      "NONE",
+    "SpotLag":            2,
 }
 
 irs_h2 = {
@@ -37,6 +44,13 @@ irs_h2 = {
     "PayReceive":         "Rec",
     "FixedRate":          0.0486,
     "DayCount":           "ACT/360",
+    # Cashflow-schedule generation (QuantLib / Saudi calendar)
+    "Calendar":           "SA",
+    "FixedFrequency":     "12M",
+    "FixedStubType":      "NONE",
+    "FloatFrequency":     "6M",
+    "FloatStubType":      "NONE",
+    "SpotLag":            2,
 }
 
 
@@ -74,19 +88,18 @@ def main():
     )
 
     # Load cashflow schedules
-    h1_fixed_cfs = load_fixed_cashflows("Instruments/h1_fixed_cfs.csv")
-    h1_float_cfs = load_float_cashflows("Instruments/h1_float_cfs.csv")
-    h2_fixed_cfs = load_fixed_cashflows("Instruments/h2_fixed_cfs.csv")
-    h2_float_cfs = load_float_cashflows("Instruments/h2_float_cfs.csv")
+    # IRS fixed/float schedules are now generated on the fly inside
+    # price_irs / get_all_irs_results from the trade dict, so no CSV
+    # loads are required for the IRS legs.
     sukuk_cfs    = load_float_cashflows("Instruments/sukuk_cfs.csv")
     fixings_6m   = load_fixings("6m_fixings.csv")
 
-    h1_results_dec    = get_all_irs_results(irs_h1, h1_float_cfs, h1_fixed_cfs, curves, value_date_dec, fixings_6m)
-    h2_results_dec    = get_all_irs_results(irs_h2, h2_float_cfs, h2_fixed_cfs, curves, value_date_dec, fixings_6m)
+    h1_results_dec    = get_all_irs_results(irs_h1, curves, value_date_dec, fixings_6m)
+    h2_results_dec    = get_all_irs_results(irs_h2, curves, value_date_dec, fixings_6m)
     sukuk_results_dec = get_all_bond_results(sukuk, sukuk_cfs, curves, value_date_dec, fixings_6m)
 
-    h1_results_mar   = get_all_irs_results(irs_h1, h1_float_cfs, h1_fixed_cfs, curves, value_date_mar, fixings_6m)
-    h2_results_mar    = get_all_irs_results(irs_h2, h2_float_cfs, h2_fixed_cfs, curves, value_date_mar, fixings_6m)
+    h1_results_mar    = get_all_irs_results(irs_h1, curves, value_date_mar, fixings_6m)
+    h2_results_mar    = get_all_irs_results(irs_h2, curves, value_date_mar, fixings_6m)
     sukuk_results_mar = get_all_bond_results(sukuk, sukuk_cfs, curves, value_date_mar, fixings_6m)
 
     results = hedge_effectiveness(
