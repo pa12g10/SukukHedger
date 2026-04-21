@@ -11,6 +11,7 @@ from typing import Dict, List, Optional
 from Model.ir_curve import IRCurve
 from Utilities.cf_parser import FixedCashflow, FloatCashflow
 from Utilities.utils import year_fraction
+import QuantLib as QL
 
 
 def _build_curve_keys(trade: Dict, value_date: date) -> tuple:
